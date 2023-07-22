@@ -170,4 +170,4 @@ cython_debug/
 *.csv*
 
 # Solution archive
-solution_archive/
+solutions_archive/

@@ -47,6 +47,10 @@ class LetterBoxGame:
 
         self.solution_standard = self.lbg_data_dict['par']
 
+        self.solution_path = os.path.join(SOLUTIONS_DIR_PATH, str(date.today()))
+        os.makedirs(self.solution_path, exist_ok=True)
+        print(self.solution_path)
+
         print(self)
 
     def __repr__(self):
@@ -152,19 +156,39 @@ class LetterBoxGame:
 
             f.write(stats_csv_str)
         
+        for sol_len in reversed(range(2, self.solution_standard + 1)):
+            self.save_solution_file(sol_len)
 
-        # solutions_path = SOLUTIONS_DIR_PATH + f"/{datetime.now().isoformat()}"
-        # os.mkdir(solutions_path)
-        # with open(solutions_path + f"/stats.txt", "w+") as r:
-        #     r.write(stats_csv_str)
+        if not os.path.exists(self.solution_path + f"/stats.txt"):
+            with open(self.solution_path + f"/stats.txt", "w") as r:
+                # r.write(stats_csv_str)
+                pass
 
-        # for i in reversed(range(2,self.solution_standard+1)):
-        #     with open(SOLUTIONS_DIR_PATH + f"/{datetime.now().isoformat()}_/length_{i}_counter_{self.break_out_counter}.txt", "w+") as s:
-        #         s.write('\n'.join(self.solutions))
-        # if self.solution_standard != 2:
-        #     with open(SOLUTIONS_DIR_PATH + f"/{datetime.now().isoformat()}_/length_2_counter_{self.break_out_counter}.txt", "w+") as sf:
-        #         sf.write('\n'.join(self.best_sols))
             
+    def save_solution_file(self, len_of_sols):
+        file_path = os.path.join(self.solution_path, f'length_{len_of_sols}_solutions.txt')
+
+        if not os.path.exists(file_path):
+            with open(file_path, "w") as new_f:
+                print([str(s) for s in self.solutions if len(s) == len_of_sols])
+                new_f.write('\n'.join([str(s) for s in self.solutions if len(s) == len_of_sols]))
+                new_f.write('\n')
+        else:
+            with open(file_path, "r+") as update_f:
+                duplicates = []
+                our_solutions = [s for s in self.solutions if len(s) == len_of_sols]
+                found_solutions = [l.strip('\n') for l in update_f.readlines()]
+
+                for our_s in our_solutions:
+                    if str(our_s) in found_solutions:
+                        duplicates.append(our_s)
+
+                if len(duplicates) < len(our_solutions):
+                    for d in duplicates:
+                        our_solutions.remove(d)
+
+                    update_f.write('\n'.join([str(s) for s in our_solutions]))
+                    update_f.write('\n')
 
     def super_set_coverage(self, word):
         coverage_set = self.super_set
