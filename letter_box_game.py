@@ -5,6 +5,7 @@ import os
 import random
 from english_words import get_english_words_set
 from lbg_site_scraper import scrape_lbg_data
+from lbg_utils import decode
 import copy
 
 # CONSTANTS
@@ -13,6 +14,52 @@ MAX_NUM_LETTER_SETS = 4
 ENG_DICT_FILE_PATH = os.environ["HOME"] + "/eng_dictionary.txt"
 STATS_FILE_PATH = os.environ["HOME"] + "/LetterBoxed/LetterBoxedStatistics.csv"
 SOLUTIONS_DIR_PATH = os.environ["HOME"] + "/LetterBoxed/solutions_archive/"
+
+class LBGStats:
+
+    def __init__(self, solution_path: str, par: int = 5):
+        self.par = par
+        self.data_root = solution_path
+
+        self.reset()
+
+        self.longest_word = None
+        self.most_coveraging_word = None
+
+    def __repr__(self):
+        entries = [
+            f"Date: {os.path.basename(self.data_root)}",
+            f"Par: {self.par}",
+            f"Total Solutions: {self.total_num_sols}",
+            f"Longest Word: {self.longest_word}",
+            f"Most Coveraging Word: {self.most_coveraging_word}",
+        ]
+        entries += [f"Num {i}-Solutions: {self.num_solutions[i]}" for i in range(2,self.par+1)]
+        entries += [f"Length Range of {i}-Solutions: {self.len_solutions[i]}" for i in range(2,self.par+1)]
+        entries += [f"Shortest & Longest of the {i}-Solutions: {self.best_solutions[i]}" for i in range(2,self.par+1)]
+        return "\n".join(entries) + "\n"
+
+    def read_solution_file(self, length: int):
+        f = f"length_{length}_solutions.txt"
+        try:
+            with open(os.path.join(self.data_root, f), "r") as sols:
+                return decode([s.strip('\n') for s in sols.readlines()])
+        except FileNotFoundError:
+            print(f"Error: could not find length {length} file ({f})")
+            return None
+
+    def get_sols(self, length: int):
+        return self.read_solution_file(length)
+        
+    def get_num_sols(self, length: int):
+        return len(self.get_sols(length))
+    
+    def reset(self):
+        self.total_num_sols = 0
+        self.num_solutions = {k: 0 for k in range(2,self.par+1)}
+        self.len_solutions = {l: (0,0) for l in range(2,self.par+1)}
+        self.best_solutions = {l: "" for l in range(2,self.par+1)}
+        pass
 
 
 class LetterBoxGame:
@@ -35,6 +82,7 @@ class LetterBoxGame:
             raise ValueError("sets need to have unique letters!")
 
         self.candidate_set = [word for word in self.lbg_data_dict["dictionary"]]
+        self.candidate_set.sort(key=lambda x: self.super_set_coverage(x), reverse=True)
 
         # All viable words are in self.lbg_data_dict['dictionary']
         # Update the stored english dictionary for posterity
@@ -49,7 +97,11 @@ class LetterBoxGame:
 
         self.solution_path = os.path.join(SOLUTIONS_DIR_PATH, str(date.today()))
         os.makedirs(self.solution_path, exist_ok=True)
+        
         print(self.solution_path)
+
+        self.stats = LBGStats(self.solution_path, self.solution_standard)
+        self.stats.most_coveraging_word = self.candidate_set[0]
 
         print(self)
 
@@ -71,6 +123,7 @@ class LetterBoxGame:
         self.solutions = []
         self.best_sols = []
         self.solve_time = 0.0
+        self.stats.reset()
 
     def get_dictionary(self):
         if (
@@ -125,6 +178,12 @@ class LetterBoxGame:
         with open(STATS_FILE_PATH, "r+") as f:
             # Put cursor at end of file
             f.seek(0, 2)
+            # Protect against case we didn't find a length-2 solution
+            if len(self.best_sols) == 0:
+                best_sol = None
+            else:
+                best_sol = self.best_sols[0]
+            
             stats_csv_str = (
                 '"'
                 + self.lbg_data_dict["date"]
@@ -145,7 +204,7 @@ class LetterBoxGame:
                 + str(self.lbg_data_dict["ourSolution"] in self.solutions)
                 + ","
                 + '"'
-                + str(self.best_sols[0])
+                + str(best_sol)
                 + '"'
                 + ","
                 + str(self.break_out_counter)
@@ -159,18 +218,50 @@ class LetterBoxGame:
         for sol_len in reversed(range(2, self.solution_standard + 1)):
             self.save_solution_file(sol_len)
 
+        # TODO: Implement and use this part. 
+        # Idea for stats is:
+        #  * par
+        #  * NYT Solution
+        #  * Total solutions found
+        #  * Number of Length 2-par solutions found
+        #  * Range of total lengths of length 2 solutions (13-24 letters, e.g.)
+        #  * Range of total lengths of length 3 solutions (14-35 letters, e.g.)
+        #  * Range of total lengths of length par solutions
+        #  * Range of total lengths of length par-1 solutions
+        self.stats.longest_word = max([(c, len(c)) for c in self.candidate_set], key=lambda x: x[1])
+        for i in range(2, self.stats.par+1):
+            sols = self.stats.get_sols(i)
+            n_sols = len(sols)
+            self.stats.total_num_sols += n_sols
+            self.stats.num_solutions[i] = n_sols
+
+            best = min([(s, len(''.join(s))) for s in sols], key=lambda x: x[1])
+            most_verbose = max([(s, len(''.join(s))) for s in sols], key=lambda x: x[1])
+
+            self.stats.len_solutions[i] = (best[1], most_verbose[1])
+            self.stats.best_solutions[i] = (best[0], most_verbose[0])
+
         if not os.path.exists(self.solution_path + f"/stats.txt"):
             with open(self.solution_path + f"/stats.txt", "w") as r:
-                # r.write(stats_csv_str)
-                pass
+                r.write(str(self.stats))
+        else:
+            with open(self.solution_path + f"/stats.txt", "w+") as r:
+                r.write(str(self.stats))
 
+    # TODO: finish and call this function
+    # Idea is to save solutions based on total length of letters. 13 being the optimal solution.
+    def save_solution_file_best(self, total_len_of_sol):
+        file_path = os.path.join(self.solution_path, f'total_length_{total_len_of_sol}_solutions.txt')
+
+        if not os.path.exists(file_path):
+            with open(file_path, "w") as new_f:
+                new_f.write('\n'.join([str(s) for s in self.solutions if len(''.join(s)) == total_len_of_sol]))
             
     def save_solution_file(self, len_of_sols):
         file_path = os.path.join(self.solution_path, f'length_{len_of_sols}_solutions.txt')
 
         if not os.path.exists(file_path):
             with open(file_path, "w") as new_f:
-                print([str(s) for s in self.solutions if len(s) == len_of_sols])
                 new_f.write('\n'.join([str(s) for s in self.solutions if len(s) == len_of_sols]))
                 new_f.write('\n')
         else:
@@ -208,6 +299,7 @@ class LetterBoxGame:
                 self.candidate_set.append(word)
 
         self.candidate_set.sort(key=lambda x: self.super_set_coverage(x), reverse=True)
+        self.stats.most_coveraging_word = self.candidate_set[0]
 
     def does_solution_cover_all_letters(self, words):
         self.letters_to_cover = self.super_set
@@ -334,6 +426,9 @@ class LetterBoxGame:
 
         self.best_sols.sort(key=lambda s: len("".join(s)))
 
+        # self.len_set_solutions[]
+        # for i in range(2, self.lbg_data_dict['par'])
+
         self.solve_time = round(time.time() - start_time, 3)
         print("\nDONE!")
         print("====================================================")
@@ -341,9 +436,14 @@ class LetterBoxGame:
         print(
             f"The best solution found out of {len(self.best_sols)} length-2 solutions is:"
         )
-        print(self.best_sols[0])
+        if len(self.best_sols) == 0:
+            print(None)
+        else:
+            print(self.best_sols[0])
         print("====================================================")
         self.save_stats()
+        # TODO: At end of solve(), should we sort the solution files? Might not be worth it
+        # Maybe should do that in the data_inspector instead.
 
     super_set = ""
     letter_sets = []
@@ -353,6 +453,7 @@ class LetterBoxGame:
     eng_dict = None
     candidate_set = []
     solve_time = 0.0
+    len_set_solutions = {}
 
     # The method for finding solutions is a monte carlo-style approach.
     # We randomize the order of candidate words in order to find new solutions
