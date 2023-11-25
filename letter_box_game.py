@@ -235,11 +235,15 @@ class LetterBoxGame:
             self.stats.total_num_sols += n_sols
             self.stats.num_solutions[i] = n_sols
 
-            best = min([(s, len(''.join(s))) for s in sols], key=lambda x: x[1])
-            most_verbose = max([(s, len(''.join(s))) for s in sols], key=lambda x: x[1])
+            if n_sols != 0:
+                best = min([(s, len(''.join(s))) for s in sols], key=lambda x: x[1])
+                most_verbose = max([(s, len(''.join(s))) for s in sols], key=lambda x: x[1])
 
-            self.stats.len_solutions[i] = (best[1], most_verbose[1])
-            self.stats.best_solutions[i] = (best[0], most_verbose[0])
+                self.stats.len_solutions[i] = (best[1], most_verbose[1])
+                self.stats.best_solutions[i] = (best[0], most_verbose[0])
+            else:
+                self.stats.len_solutions[i] = None
+                self.stats.best_solutions[i] = None
 
         if not os.path.exists(self.solution_path + f"/stats.txt"):
             with open(self.solution_path + f"/stats.txt", "w") as r:

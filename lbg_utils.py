@@ -10,6 +10,11 @@ def decode(lines: List[str]):
         ret_list = []
         for line in lines:
             l = line.strip('\n')
-            ret_list.append(ast.literal_eval(l))
+            if len(l) < 3:
+                print(f"Found line {line} of length {len(l)}")
+            try:
+                ret_list.append(ast.literal_eval(l))
+            except SyntaxError:
+                  print(f"AST Error: couldn't handle {line}")
 
         return ret_list
